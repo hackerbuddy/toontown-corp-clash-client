@@ -1,5 +1,5 @@
 # toontown-corp-clash-client
-This is a Python Botting/Hacked Client for Toontown Corporate Clash 1.4.5.
+This is a Python Botting/Hacked Client for [Toontown Corporate Clash 1.4.5](https://corporateclash.net/), a free community-made remake of Disney's retired Toontown videogame. 
 
 This project uses `win32api` ReadProcessMemory to fetch a Player's location and health, and then uses PyAutoGui to move the Player. Future releases will likely attempt to write to memory directly (allowing the bot to run in the background).
 
