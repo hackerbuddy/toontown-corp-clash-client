@@ -14,7 +14,7 @@ class Player():
         self.hp_base_address = hp_base_address
         self.coords_base_address = coords_base_address
         self.inactive_offset = 0x58 # used for determining idleness, x,y,x and direction
-        self.hp_offset = 0x238
+        self.hp_offset = 0x4C8
         self.hp = 0
         self.x = 0
         self.z = 0
@@ -24,8 +24,8 @@ class Player():
 
     # tells us if player is idle, and also used to determine addresses for x,y,z and direction
     def get_idle_bool(self):
-        inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + self.inactive_offset, 1).hex()
-        return inactive_bool  == '01'
+        inactive_bool = self.mem_manager.read_short(self.coords_base_address + self.inactive_offset)
+        return inactive_bool == 1
 
     def get_x(self):
         x_offset = self.inactive_offset - 24
@@ -49,13 +49,13 @@ class Player():
         return direction_degrees
 
     def get_hp(self):
-        hp_start_val = 16208 # hp starts with a weird value
-        toon_hp_raw = self.mem_manager.read_short(self.hp_base_address + self.hp_offset) #2 bytes
+        hp_start_val = 872609264 #16208 # hp starts with a weird value
+        toon_hp_raw = self.mem_manager.read_long(self.hp_base_address + self.hp_offset) #2 bytes
         toon_hp = (toon_hp_raw - hp_start_val)/32
         return toon_hp
     
     def get_all_as_json(self):
-        toon_json = {'hp': self.get_hp(), 
+        toon_json = {'hp': self.get_hp(),
                      'x': round(self.get_x(), 2), 
                      'z': round(self.get_z(), 2),
                      'y': round(self.get_y(), 2),
@@ -73,7 +73,7 @@ def main(*argv):
 
     time.sleep(1)
     print('done sleeping')
-    window_name = 'Corporate Clash [1.4.5]'# Launcher'#'Toontown Rewritten'
+    window_name = 'Corporate Clash [1.5.0]'# Launcher'#'Toontown Rewritten'
     handle = wgui.FindWindow(None, window_name)
     print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
     if not handle:
@@ -101,9 +101,9 @@ def main(*argv):
 
     pm = pymem.Pymem('CorporateClash.exe')
 
-    hp_base_address = get_address(pm.base_address, [0x13D52598, 0x60, 0x8, 0x80, 0x150, 0x28, 0x20], pm)
-    coords_base_address = get_address(pm.base_address, [0x13A196C0, 0x50, 0x10, 0x60, 0x1F0, 0x18, 0x18], pm)
-
+    hp_base_address = get_address(pm.base_address, [0x13A73F60, 0x60, 0x30, 0xE0, 0x38, 0x270, 0x68], pm)
+    coords_base_address = get_address(pm.base_address, [0x13DED878, 0x1D0, 0x20, 0x38, 0x1A8, 0xB8], pm)
+    
     # To find a value, we need a static address, plus offsets
     # print(f'Hp Base Address: {hex(hp_base_address)}')
     # print(f'Coords Base Address: {hex(coords_base_address)}')
@@ -115,8 +115,8 @@ def main(*argv):
     
     while 1 == 1:
         print(player.get_all_as_json())
-        move_negative_z(player, 10)
-        turn_north(player)
+        #move_negative_z(player, 10)
+        #turn_north(player)
         time.sleep(1)
 
 
