@@ -1,4 +1,5 @@
 import pyautogui
+import subprocess
 import time
 import win32gui as wgui
 import win32process as wproc
@@ -6,6 +7,8 @@ import win32api as wapi
 import pymem
 import time
 import math
+import psutil
+
 
 
 class Player():
@@ -69,35 +72,88 @@ class Player():
             raise Exception("Critical Memory Error: MEMORY HAS BEEN DEALOCATED. PLEASE RELOAD SCENE!")
 
 
+def get_coords_helper():
+    # launch game manually, then move your mouse around!
+    while 1 == 1:
+        print(f'Final Cursor Position: {pyautogui.position()}')
+
+
+def start_launcher_play_game(select_account_x, select_account_y):
+    try:
+        # See if Launcher is already up and running
+        handle = switch_to_window('Corporate Clash Launcher')
+    except:
+        # Launch launcher if not up and running
+        subprocess.run(["cmd.exe", "/c", "start", "/d", "C:/Program Files/Corporate Clash", "new_launcher.exe"], timeout=15)
+        time.sleep(6)
+        handle = switch_to_window('Corporate Clash Launcher')
+
+    switch_to_window('Corporate Clash Launcher')
+    time.sleep(5)
+
+    # click on account selector
+    pyautogui.moveTo(select_account_x, select_account_y, 1)
+    pyautogui.leftClick()
+
+    # select account
+    pyautogui.moveTo(select_account_x, select_account_y + 60, 1)
+    pyautogui.leftClick()
+
+    # hit the big PLAY button
+    pyautogui.moveTo(select_account_x + 140, select_account_y + 200, 1)
+    pyautogui.leftClick()
+
+def kill_game(process_name = "CorporateClash.exe"):
+    for proc in psutil.process_iter():
+    # check whether the process name matches
+        if proc.name() == process_name:
+            proc.kill()
+
+def start_game():
+    select_account_x = 1212
+    select_account_y = 302
+
+    current_game_window_handle = 'Corporate Clash [1.5.2]'
+    start_launcher_play_game(select_account_x, select_account_y)
+
+    # Wait for actual game to start...
+    time.sleep(15)
+
+    game_loaded = False
+    attempts = 0
+    while not game_loaded and attempts < 30:
+        try:
+            handle = switch_to_window(current_game_window_handle)
+        except:
+            print('Game not loaded yet...ugh')
+            attempts+=1
+            time.sleep(1)
+        
+        game_loaded = True
+
+    if not game_loaded:
+        raise Exception("Error: The game never loaded!!")
+    
+    # Wait some more...just because game has started, doesn't mean our game menu is ready...!
+    time.sleep(5)
+
+    pyautogui.leftClick()
+
+    # Small delay to load our characters
+    time.sleep(4)
+
+    # Selecting character on top left
+    pyautogui.moveTo(596, 463, 1)
+    pyautogui.leftClick()
+
+    # "Play this Toon" menu, click it
+    pyautogui.moveTo(771, 776, 1)
+    pyautogui.leftClick()
+
 def main(*argv):
-
-    time.sleep(1)
-    print('done sleeping')
-    window_name = 'Corporate Clash [1.5.0]'# Launcher'#'Toontown Rewritten'
-    handle = wgui.FindWindow(None, window_name)
-    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
-    if not handle:
-        print("Invalid window handle")
-        return
-    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
-    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
-    pyautogui.press("alt")
     
-    wgui.SetForegroundWindow(handle)
-    wgui.SetFocus(handle)
-    window_data = wgui.GetWindowRect(handle)
-    print(window_data) #find out the actual window size and location of Toontown Rewritten
-    
-    print(f'Screen Size: {pyautogui.size()}')
-    print(f'Initial Cursor Position: {pyautogui.position()}')
-    #print(f'Initial Relative Cursor Position: {getRelativeCursorPos(pyautogui.size(), pyautogui.position())}')
-    print(f'Final Cursor Position: {pyautogui.position()}')
-    #print(f'Relative Cursor Position: (x={pyautogui.position()[0]/pyautogui.size()[0]}, y={pyautogui.position()[1]/pyautogui.size()[1]})')
-
-    #fish_bot(cast_button_x=957, cast_button_y=757, max_fish_in_bucket=25, time_to_wait_for_fish_to_bite=18)
-    #exit()
-
-    
+    start_game()
+    exit()
 
     pm = pymem.Pymem('CorporateClash.exe')
 
@@ -402,6 +458,18 @@ def get_address(start_address, offsets, pm):
         next_prt_addr = bytestr_to_addr(pm.read_bytes(next_prt_addr + offset, 6).hex())
 
     return next_prt_addr
+
+def switch_to_window(window_name):
+    handle = wgui.FindWindow(None, window_name)
+    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
+    if not handle:
+        raise Exception(f"Error: {window_name} is an invalid window handle. Are you sure it is running?")
+    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
+    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
+    pyautogui.press("alt")
+    wgui.SetForegroundWindow(handle)
+    wgui.SetFocus(handle)
+    return handle
 
 if __name__ == "__main__":
     main()
