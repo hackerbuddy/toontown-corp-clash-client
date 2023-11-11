@@ -10,12 +10,60 @@ import math
 import json
 import re
 
+def main(*argv):
+    window_name = 'Corporate Clash [1.5.3]'# Launcher'#'Toontown Rewritten'
+    handle = wgui.FindWindow(None, window_name)
+    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
+    if not handle:
+        print("Invalid window handle")
+        return
+
+    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
+    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
+    pyautogui.press("alt")
+
+    wgui.SetForegroundWindow(handle)
+    wgui.SetFocus(handle)
+    window_data = wgui.GetWindowRect(handle)
+    print(window_data) #find out the actual window size and location of Toontown Rewritten
+    
+    print(f'Screen Size: {pyautogui.size()}')
+    print(f'Initial Cursor Position: {pyautogui.position()}')
+    #print(f'Initial Relative Cursor Position: {getRelativeCursorPos(pyautogui.size(), pyautogui.position())}')
+    print(f'Final Cursor Position: {pyautogui.position()}')
+
+    pm = pymem.Pymem('CorporateClash.exe')
+
+    # Note: Your first address should look like "13A71F18", almost certainly 8 characters long, starting with "13"
+
+    # Find setactivity_base_address by searching CheatEngine or similar tool for the String of {"cmd":
+    setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
+
+    # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for "-53.77880096"
+    coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
+
+    # To find a value, we need a static address, plus offsets
+    # print(f'Hp Base Address: {hex(hp_base_address)}')
+    # print(f'Coords Base Address: {hex(coords_base_address)}')
+        
+    player = Player(mem_manager=pm,
+                    setactivity_base_address=setactivity_base_address,
+                    coords_base_address=coords_base_address,
+                    )
+    
+    while 1 == 1:
+        print(player.get_all_as_json())
+        #move_negative_z(player, 10)
+        #turn_north(player)
+        time.sleep(1)
+
+
 class Player():
-    def __init__(self, mem_manager, setactivity_base_address):#, #coords_base_address):
+    def __init__(self, mem_manager, setactivity_base_address, coords_base_address):
         self.mem_manager = mem_manager
-        self.setactivity_base_address = setactivity_base_address
-        #self.coords_base_address = coords_base_address
-        self.inactive_offset = 0x58 # used for determining idleness, x,y,x and direction
+        self.setactivity_base_address = setactivity_base_address # A JSON string
+        self.coords_base_address = coords_base_address # A bunch of bytes, mostly float type
+        self.coords_offset = 0x40 # start with X coord, but this is used to fetch other values like inactivity
         self.setactivity_offset = 0x8
         self.map_location = ''
         self.hp_remaining = 0
@@ -55,6 +103,9 @@ class Player():
 
     def get_setactivity_json(self):
         """Fetch values from the variable-length SET_ACTIVITY command JSON string"""
+
+        # Find this value by searching CheatEngine or similar tool for {"cmd":, then getting a pointer to the beginning
+        # of the JSON. The JSON will look like below:
         '''
             {
             "cmd": "SET_ACTIVITY",
@@ -77,24 +128,8 @@ class Player():
 
         This JSON string is variable length, but occupies a constant location in memory
         '''
-        # 318 for toontown central
-        setactivity_json_bytearray = self.mem_manager.read_bytes(self.setactivity_base_address + self.setactivity_offset, 600)
 
-        # open_curlybrace_count = 0
-        # close_curlybrace_count = 0
-        # json_end_candidates = []
-        # for index, byte in enumerate(setactivity_json_bytearray):
-        #     if byte == 123:
-        #         open_curlybrace_count +=1
-        #     if byte == 125: # 125 == }
-        #         close_curlybrace_count +=1
-        #         if open_curlybrace_count == close_curlybrace_count:
-        #             print('We may have found a valid complete json!')
-        #             json_end_candidates.append(index)
-        
-        # print(f'JSON may have ended at these indexes: {json_end_candidates}')
-        
-        # index_end_of_json = json_end_candidates[0] + 1
+        setactivity_json_bytearray = self.mem_manager.read_bytes(self.setactivity_base_address + self.setactivity_offset, 600)
         setactivity_json_bytearray_parsed = self.get_first_json_from_bytearray(setactivity_json_bytearray)
 
         #setactivity_json_bytearray = self.mem_manager.read_bytes(self.setactivity_base_address + self.setactivity_offset, index_end_of_json)
@@ -103,30 +138,32 @@ class Player():
 
         return setactivity_json
 
-    def get_idle_bool(self):
-        inactive_bool = self.mem_manager.read_short(self.coords_base_address + self.inactive_offset)
-        return inactive_bool == 1
-
     def get_x(self):
-        x_offset = self.inactive_offset - 24
+        """Get the X coordinate float"""
+        x_offset = self.coords_offset + 0 # X is the first value we read, used to determine other toon vals
         x = self.mem_manager.read_float(self.coords_base_address + x_offset)
         return x
     
     def get_z(self):
-        z_offset = self.inactive_offset - 20
+        z_offset = self.coords_offset + 4
         z = self.mem_manager.read_float(self.coords_base_address + z_offset)
         return z
 
     def get_y(self):
-        y_offset = self.inactive_offset - 16
+        y_offset = self.coords_offset + 8
         y = self.mem_manager.read_float(self.coords_base_address + y_offset)
         return y
       
     def get_direction_degrees(self):
-        self.direction_offset = self.inactive_offset - 12
-        direction = self.mem_manager.read_float(self.coords_base_address + self.direction_offset)
+        direction_offset = self.coords_offset + 12
+        direction = self.mem_manager.read_float(self.coords_base_address + direction_offset)
         direction_degrees = direction % 360 # gives us a value between 0 and 360 degrees
         return direction_degrees
+    
+    def get_idle_bool(self):
+        idle_bool_offset = self.coords_offset + 24
+        inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + idle_bool_offset, 1) #bytearray like b'\x01'}
+        return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
@@ -153,75 +190,21 @@ class Player():
     def get_all_as_json(self):
         self.load_hp_and_name_and_map_location()
         
-        #toon_json = {'setactivity_json': self.get_setactivity_json()}
-        toon_json = {'hp_remaining': self.hp_remaining, 'hp_max': self.hp_max, 'map_location': self.map_location, 'name': self.name}
-            #'setactivity_json': self.get_setactivity_json()}#,
-                    #  'x': round(self.get_x(), 2), 
-                    #  'z': round(self.get_z(), 2),
-                    #  'y': round(self.get_y(), 2),
-                    #  'direction_degrees': round(self.get_direction_degrees(), 2),
-                    #  'inactive': self.get_idle_bool()}
+        toon_json = {'hp_remaining': self.hp_remaining, 
+                     'hp_max': self.hp_max, 
+                     'map_location': self.map_location, 
+                     'name': self.name,
+                     'x': round(self.get_x(), 2), 
+                     'z': round(self.get_z(), 2), 
+                     'y': round(self.get_y(), 2),
+                     'direction_degrees': round(self.get_direction_degrees(), 2),
+                     'inactive': self.get_idle_bool()}
         return toon_json
 
     
     def check_if_memory_deallocated(self):
         if self.x == 0.0 and self.x == self.z == self.y == self.direction_degrees:
             raise Exception("Critical Memory Error: MEMORY HAS BEEN DEALOCATED. PLEASE RELOAD SCENE!")
-
-
-def main(*argv):
-
-    time.sleep(1)
-    print('done sleeping')
-    window_name = 'Corporate Clash [1.5.3]'# Launcher'#'Toontown Rewritten'
-    handle = wgui.FindWindow(None, window_name)
-    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
-    if not handle:
-        print("Invalid window handle")
-        return
-
-    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
-    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
-    pyautogui.press("alt")
-
-    wgui.SetForegroundWindow(handle)
-    wgui.SetFocus(handle)
-    window_data = wgui.GetWindowRect(handle)
-    print(window_data) #find out the actual window size and location of Toontown Rewritten
-    
-    print(f'Screen Size: {pyautogui.size()}')
-    print(f'Initial Cursor Position: {pyautogui.position()}')
-    #print(f'Initial Relative Cursor Position: {getRelativeCursorPos(pyautogui.size(), pyautogui.position())}')
-    print(f'Final Cursor Position: {pyautogui.position()}')
-    #print(f'Relative Cursor Position: (x={pyautogui.position()[0]/pyautogui.size()[0]}, y={pyautogui.position()[1]/pyautogui.size()[1]})')
-
-    #fish_bot(cast_button_x=957, cast_button_y=757, max_fish_in_bucket=25, time_to_wait_for_fish_to_bite=18)
-    #exit()
-
-    
-
-    pm = pymem.Pymem('CorporateClash.exe')
-
-
-    # Note: Your first address should look like "13A71F18", almost certainly 8 characters long, starting with "13"
-    setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
-    #coords_base_address = get_address(pm.base_addr[0x13DED878, 0x1D0, 0x20, 0x38, 0x1A8, 0xB8], pm)
-    
-    # To find a value, we need a static address, plus offsets
-    # print(f'Hp Base Address: {hex(hp_base_address)}')
-    # print(f'Coords Base Address: {hex(coords_base_address)}')
-        
-    player = Player(mem_manager=pm,
-                    setactivity_base_address=setactivity_base_address,
-                    #coords_base_address=coords_base_address,
-                    )
-    
-    while 1 == 1:
-        print(player.get_all_as_json())
-        #move_negative_z(player, 10)
-        #turn_north(player)
-        time.sleep(1)
-
 
 def move_positive_x(player, distance, timeout_seconds=10, precision=1):
     turn_east(player)
