@@ -1,5 +1,5 @@
+
 import pyautogui
-import subprocess
 import time
 import win32gui as wgui
 import win32process as wproc
@@ -7,18 +7,20 @@ import win32api as wapi
 import pymem
 import time
 import math
-import psutil
-
-
+import json
+import re
 
 class Player():
-    def __init__(self, mem_manager, hp_base_address, coords_base_address):
+    def __init__(self, mem_manager, setactivity_base_address):#, #coords_base_address):
         self.mem_manager = mem_manager
-        self.hp_base_address = hp_base_address
-        self.coords_base_address = coords_base_address
+        self.setactivity_base_address = setactivity_base_address
+        #self.coords_base_address = coords_base_address
         self.inactive_offset = 0x58 # used for determining idleness, x,y,x and direction
-        self.hp_offset = 0x4C8
-        self.hp = 0
+        self.setactivity_offset = 0x8
+        self.map_location = ''
+        self.hp_remaining = 0
+        self.hp_max = 0
+        self.name = ''
         self.x = 0
         self.z = 0
         self.y = 0
@@ -26,6 +28,81 @@ class Player():
         self.inactive = None
 
     # tells us if player is idle, and also used to determine addresses for x,y,z and direction
+    def get_first_json_from_bytearray(self, array_of_bytes):
+        """Attempt to parse a bytearray and return valid ASCII JSON if it exists"""
+        open_curlybrace_count = 0
+        close_curlybrace_count = 0
+        json_end_candidates = []
+        for index, byte in enumerate(array_of_bytes):
+            if byte == 123: # ASCII value of {
+                open_curlybrace_count +=1
+            if byte == 125: # ASCII value of }
+                close_curlybrace_count +=1
+                if open_curlybrace_count == close_curlybrace_count:
+                    #print('We may have found a valid complete json!')
+                    json_end_candidates.append(index)
+        
+        #print(f'JSON may have ended at these indexes: {json_end_candidates}')
+        
+        index_end_of_json = json_end_candidates[0] + 1
+
+        if json_end_candidates:
+            return array_of_bytes[0:index_end_of_json]
+        else:
+            print("Error: No ASCII JSON found in this bytestring!")
+            return False
+
+
+    def get_setactivity_json(self):
+        """Fetch values from the variable-length SET_ACTIVITY command JSON string"""
+        '''
+            {
+            "cmd": "SET_ACTIVITY",
+            "data": {
+                "assets": {
+                    "large_image": "1137059790284148877"
+                },
+                "timestamps": {
+                    "start": 1699720731000
+                },
+                "details": "Mr. Hackerbuddy (12/15)",
+                "state": "Toontown Central",
+                "name": "Toontown: Corporate Clash",
+                "application_id": "532686383211479042",
+                "type": 0
+            },
+            "evt": null,
+            "nonce": "eb094ff9-b1a0-4bb1-8cca-a0f6dbdeb566"
+        }
+
+        This JSON string is variable length, but occupies a constant location in memory
+        '''
+        # 318 for toontown central
+        setactivity_json_bytearray = self.mem_manager.read_bytes(self.setactivity_base_address + self.setactivity_offset, 600)
+
+        # open_curlybrace_count = 0
+        # close_curlybrace_count = 0
+        # json_end_candidates = []
+        # for index, byte in enumerate(setactivity_json_bytearray):
+        #     if byte == 123:
+        #         open_curlybrace_count +=1
+        #     if byte == 125: # 125 == }
+        #         close_curlybrace_count +=1
+        #         if open_curlybrace_count == close_curlybrace_count:
+        #             print('We may have found a valid complete json!')
+        #             json_end_candidates.append(index)
+        
+        # print(f'JSON may have ended at these indexes: {json_end_candidates}')
+        
+        # index_end_of_json = json_end_candidates[0] + 1
+        setactivity_json_bytearray_parsed = self.get_first_json_from_bytearray(setactivity_json_bytearray)
+
+        #setactivity_json_bytearray = self.mem_manager.read_bytes(self.setactivity_base_address + self.setactivity_offset, index_end_of_json)
+   
+        setactivity_json = json.loads(setactivity_json_bytearray_parsed.decode('ascii'))
+
+        return setactivity_json
+
     def get_idle_bool(self):
         inactive_bool = self.mem_manager.read_short(self.coords_base_address + self.inactive_offset)
         return inactive_bool == 1
@@ -51,19 +128,39 @@ class Player():
         direction_degrees = direction % 360 # gives us a value between 0 and 360 degrees
         return direction_degrees
 
-    def get_hp(self):
-        hp_start_val = 872609264 #16208 # hp starts with a weird value
-        toon_hp_raw = self.mem_manager.read_long(self.hp_base_address + self.hp_offset) #2 bytes
-        toon_hp = (toon_hp_raw - hp_start_val)/32
-        return toon_hp
+    def load_hp_and_name_and_map_location(self):
+        '''Read the SET_ACTIVITY JSON string to get 4 values
+           Some of these values are available BEFORE toon selection!
+           Others are not loaded until toon is selected
+        '''
+        setactivity_json = self.get_setactivity_json()
+        self.map_location =  setactivity_json['data']['state']
+        
+        # This value looks like "Dr. Hackerbuddy (12/15)"
+        try:
+            toon_name_and_hp = self.get_setactivity_json()['data']['details']
+            hp_min_max = re.search('\(\d+\/\d+\)',toon_name_and_hp).group() # (12/15)
+            self.name = toon_name_and_hp.replace(hp_min_max, '').rstrip()
+            hp_min_max_int_arr = hp_min_max.replace('(','').replace(')','').split('/') # [12, 15]
+            self.hp_remaining = hp_min_max_int_arr[0] # 12 (current health)
+            self.hp_max = hp_min_max_int_arr[1] # 15 (max health)
+        except Exception as ex:
+            print(ex)
+            print("Warning: This data could not be loaded yet!")
+
+         # (12/15)
     
     def get_all_as_json(self):
-        toon_json = {'hp': self.get_hp(),
-                     'x': round(self.get_x(), 2), 
-                     'z': round(self.get_z(), 2),
-                     'y': round(self.get_y(), 2),
-                     'direction_degrees': round(self.get_direction_degrees(), 2),
-                     'inactive': self.get_idle_bool()}
+        self.load_hp_and_name_and_map_location()
+        
+        #toon_json = {'setactivity_json': self.get_setactivity_json()}
+        toon_json = {'hp_remaining': self.hp_remaining, 'hp_max': self.hp_max, 'map_location': self.map_location, 'name': self.name}
+            #'setactivity_json': self.get_setactivity_json()}#,
+                    #  'x': round(self.get_x(), 2), 
+                    #  'z': round(self.get_z(), 2),
+                    #  'y': round(self.get_y(), 2),
+                    #  'direction_degrees': round(self.get_direction_degrees(), 2),
+                    #  'inactive': self.get_idle_bool()}
         return toon_json
 
     
@@ -72,101 +169,51 @@ class Player():
             raise Exception("Critical Memory Error: MEMORY HAS BEEN DEALOCATED. PLEASE RELOAD SCENE!")
 
 
-def get_coords_helper():
-    # launch game manually, then move your mouse around!
-    while 1 == 1:
-        print(f'Final Cursor Position: {pyautogui.position()}')
-
-
-def start_launcher_play_game(select_account_x, select_account_y):
-    try:
-        # See if Launcher is already up and running
-        handle = switch_to_window('Corporate Clash Launcher')
-    except:
-        # Launch launcher if not up and running
-        subprocess.run(["cmd.exe", "/c", "start", "/d", "C:/Program Files/Corporate Clash", "new_launcher.exe"], timeout=15)
-        time.sleep(6)
-        handle = switch_to_window('Corporate Clash Launcher')
-
-    switch_to_window('Corporate Clash Launcher')
-    time.sleep(5)
-
-    # click on account selector
-    pyautogui.moveTo(select_account_x, select_account_y, 1)
-    pyautogui.leftClick()
-
-    # select account
-    pyautogui.moveTo(select_account_x, select_account_y + 60, 1)
-    pyautogui.leftClick()
-
-    # hit the big PLAY button
-    pyautogui.moveTo(select_account_x + 140, select_account_y + 200, 1)
-    pyautogui.leftClick()
-
-def kill_game(process_name = "CorporateClash.exe"):
-    for proc in psutil.process_iter():
-    # check whether the process name matches
-        if proc.name() == process_name:
-            proc.kill()
-
-def start_game():
-    select_account_x = 1212
-    select_account_y = 302
-
-    current_game_window_handle = 'Corporate Clash [1.5.2]'
-    start_launcher_play_game(select_account_x, select_account_y)
-
-    # Wait for actual game to start...
-    time.sleep(15)
-
-    game_loaded = False
-    attempts = 0
-    while not game_loaded and attempts < 30:
-        try:
-            handle = switch_to_window(current_game_window_handle)
-        except:
-            print('Game not loaded yet...ugh')
-            attempts+=1
-            time.sleep(1)
-        
-        game_loaded = True
-
-    if not game_loaded:
-        raise Exception("Error: The game never loaded!!")
-    
-    # Wait some more...just because game has started, doesn't mean our game menu is ready...!
-    time.sleep(5)
-
-    pyautogui.leftClick()
-
-    # Small delay to load our characters
-    time.sleep(4)
-
-    # Selecting character on top left
-    pyautogui.moveTo(596, 463, 1)
-    pyautogui.leftClick()
-
-    # "Play this Toon" menu, click it
-    pyautogui.moveTo(771, 776, 1)
-    pyautogui.leftClick()
-
 def main(*argv):
+
+    time.sleep(1)
+    print('done sleeping')
+    window_name = 'Corporate Clash [1.5.3]'# Launcher'#'Toontown Rewritten'
+    handle = wgui.FindWindow(None, window_name)
+    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
+    if not handle:
+        print("Invalid window handle")
+        return
+
+    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
+    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
+    pyautogui.press("alt")
+
+    wgui.SetForegroundWindow(handle)
+    wgui.SetFocus(handle)
+    window_data = wgui.GetWindowRect(handle)
+    print(window_data) #find out the actual window size and location of Toontown Rewritten
     
-    start_game()
-    exit()
+    print(f'Screen Size: {pyautogui.size()}')
+    print(f'Initial Cursor Position: {pyautogui.position()}')
+    #print(f'Initial Relative Cursor Position: {getRelativeCursorPos(pyautogui.size(), pyautogui.position())}')
+    print(f'Final Cursor Position: {pyautogui.position()}')
+    #print(f'Relative Cursor Position: (x={pyautogui.position()[0]/pyautogui.size()[0]}, y={pyautogui.position()[1]/pyautogui.size()[1]})')
+
+    #fish_bot(cast_button_x=957, cast_button_y=757, max_fish_in_bucket=25, time_to_wait_for_fish_to_bite=18)
+    #exit()
+
+    
 
     pm = pymem.Pymem('CorporateClash.exe')
 
-    hp_base_address = get_address(pm.base_address, [0x13A73F60, 0x60, 0x30, 0xE0, 0x38, 0x270, 0x68], pm)
-    coords_base_address = get_address(pm.base_address, [0x13DED878, 0x1D0, 0x20, 0x38, 0x1A8, 0xB8], pm)
+
+    # Note: Your first address should look like "13A71F18", almost certainly 8 characters long, starting with "13"
+    setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
+    #coords_base_address = get_address(pm.base_addr[0x13DED878, 0x1D0, 0x20, 0x38, 0x1A8, 0xB8], pm)
     
     # To find a value, we need a static address, plus offsets
     # print(f'Hp Base Address: {hex(hp_base_address)}')
     # print(f'Coords Base Address: {hex(coords_base_address)}')
         
     player = Player(mem_manager=pm,
-                    hp_base_address=hp_base_address,
-                    coords_base_address=coords_base_address,
+                    setactivity_base_address=setactivity_base_address,
+                    #coords_base_address=coords_base_address,
                     )
     
     while 1 == 1:
@@ -458,18 +505,6 @@ def get_address(start_address, offsets, pm):
         next_prt_addr = bytestr_to_addr(pm.read_bytes(next_prt_addr + offset, 6).hex())
 
     return next_prt_addr
-
-def switch_to_window(window_name):
-    handle = wgui.FindWindow(None, window_name)
-    print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
-    if not handle:
-        raise Exception(f"Error: {window_name} is an invalid window handle. Are you sure it is running?")
-    remote_thread, _ = wproc.GetWindowThreadProcessId(handle)
-    wproc.AttachThreadInput(wapi.GetCurrentThreadId(), remote_thread, True)
-    pyautogui.press("alt")
-    wgui.SetForegroundWindow(handle)
-    wgui.SetFocus(handle)
-    return handle
 
 if __name__ == "__main__":
     main()
