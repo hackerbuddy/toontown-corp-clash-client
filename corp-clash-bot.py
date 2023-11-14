@@ -184,9 +184,10 @@ class Player():
 
     def get_hp(self):
         hp_start_val = 3180910064 # when toon has 0 health
+        address = self.hp_base_address + self.hp_offset
         hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
         unsigned_hp = hp +(1 << 32) 
-        return (unsigned_hp - hp_start_val) / 32
+        return hex(address) #(unsigned_hp - hp_start_val) / 32
         #return int(hp, 16)
 
     def load_hp_and_name_and_map_location(self):
