@@ -37,18 +37,22 @@ def main(*argv):
     # Note: Your first address should look like "13A71F18", almost certainly 8 characters long, starting with "13"
 
     # Find setactivity_base_address by searching CheatEngine or similar tool for the String of {"cmd":
-    setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
+    # setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
 
     # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for "-53.77880096"
     coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
+    hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
+    
+    #jellybeans_base_address = get_address(pm.base_address, [0x13DECCC8, 0x8C8, 0xD8, 0x50, 0x8, 0x8, 0x30], pm)
 
     # To find a value, we need a static address, plus offsets
     # print(f'Hp Base Address: {hex(hp_base_address)}')
     # print(f'Coords Base Address: {hex(coords_base_address)}')
         
     player = Player(mem_manager=pm,
-                    setactivity_base_address=setactivity_base_address,
+                    #setactivity_base_address=setactivity_base_address,
                     coords_base_address=coords_base_address,
+                    hp_base_address= hp_base_address,
                     )
     
     while 1 == 1:
@@ -59,12 +63,16 @@ def main(*argv):
 
 
 class Player():
-    def __init__(self, mem_manager, setactivity_base_address, coords_base_address):
+    def __init__(self, mem_manager, coords_base_address, hp_base_address):
         self.mem_manager = mem_manager
-        self.setactivity_base_address = setactivity_base_address # A JSON string
+        #self.setactivity_base_address = setactivity_base_address # A JSON string
         self.coords_base_address = coords_base_address # A bunch of bytes, mostly float type
+        #self.jellybeans_base_address = jellybeans_base_address
+        #self.jellybeans_offset = 0xC64
+        self.hp_base_address = hp_base_address
         self.coords_offset = 0x40 # start with X coord, but this is used to fetch other values like inactivity
-        self.setactivity_offset = 0x8
+        #self.setactivity_offset = 0x8
+        self.hp_offset = 0x238
         self.map_location = ''
         self.hp_remaining = 0
         self.hp_max = 0
@@ -74,6 +82,15 @@ class Player():
         self.y = 0
         self.direction_degrees = 0
         self.inactive = None
+
+    def get_jellybeans(self):
+        """Attempt to get jellybeans value -- this value might not be loaded immediately on game start"""
+        try:
+            jellybeans_raw = self.mem_manager.read_int(self.jellybeans_base_address + self.jellybeans_offset)
+            return jellybeans_raw
+        except Exception as ex:
+            print("Error: Jellybeans value might not be loaded into memory yet...!")
+            return 0
 
     # tells us if player is idle, and also used to determine addresses for x,y,z and direction
     def get_first_json_from_bytearray(self, array_of_bytes):
@@ -165,6 +182,13 @@ class Player():
         inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + idle_bool_offset, 1) #bytearray like b'\x01'}
         return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
+    def get_hp(self):
+        hp_start_val = 3180910064 # when toon has 0 health
+        hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
+        unsigned_hp = hp +(1 << 32) 
+        return (unsigned_hp - hp_start_val) / 32
+        #return int(hp, 16)
+
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
            Some of these values are available BEFORE toon selection!
@@ -188,12 +212,13 @@ class Player():
          # (12/15)
     
     def get_all_as_json(self):
-        self.load_hp_and_name_and_map_location()
-        
-        toon_json = {'hp_remaining': self.hp_remaining, 
-                     'hp_max': self.hp_max, 
-                     'map_location': self.map_location, 
-                     'name': self.name,
+        #self.load_hp_and_name_and_map_location()
+        # toon_json = {'hp_remaining': self.hp_remaining, 
+        #              'hp_max': self.hp_max,
+        #toon_json = {'jellybeans': self.get_jellybeans(),
+                    #  'map_location': self.map_location, 
+                    #  'name': self.name,
+        toon_json = {'hp': self.get_hp(),
                      'x': round(self.get_x(), 2), 
                      'z': round(self.get_z(), 2), 
                      'y': round(self.get_y(), 2),
