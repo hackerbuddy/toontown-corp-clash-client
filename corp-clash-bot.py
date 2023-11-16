@@ -183,10 +183,10 @@ class Player():
         return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
     def get_hp(self):
-        hp_start_val = 3180910064 # when toon has 0 health
+        # the equation to get this value will likely change every update, but generally it is a val divisible by 32
+        hp_start_val = -2018126384 # when toon has 0 health
         hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
-        unsigned_hp = hp +(1 << 32) 
-        return (unsigned_hp - hp_start_val) / 32
+        return (hp - (hp_start_val + 32))/32
         #return int(hp, 16)
 
     def load_hp_and_name_and_map_location(self):
