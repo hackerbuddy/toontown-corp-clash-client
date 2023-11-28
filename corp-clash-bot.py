@@ -33,15 +33,14 @@ def main(*argv):
     print(f'Final Cursor Position: {pyautogui.position()}')
 
     pm = pymem.Pymem('CorporateClash.exe')
-
     # Note: Your first address should look like "13A71F18", almost certainly 8 characters long, starting with "13"
 
     # Find setactivity_base_address by searching CheatEngine or similar tool for the String of {"cmd":
     # setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
 
     # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for a Float of "-53.77880096"
-    coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
-    hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
+    coords_base_address = get_address(pm.base_address, [0x13DF79E0, 0x530, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
+    #hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
     
     #jellybeans_base_address = get_address(pm.base_address, [0x13DECCC8, 0x8C8, 0xD8, 0x50, 0x8, 0x8, 0x30], pm)
 
@@ -52,7 +51,7 @@ def main(*argv):
     player = Player(mem_manager=pm,
                     #setactivity_base_address=setactivity_base_address,
                     coords_base_address=coords_base_address,
-                    hp_base_address= hp_base_address,
+                    #hp_base_address= hp_base_address,
                     )
     
     while 1 == 1:
@@ -63,13 +62,13 @@ def main(*argv):
 
 
 class Player():
-    def __init__(self, mem_manager, coords_base_address, hp_base_address):
+    def __init__(self, mem_manager, coords_base_address):
         self.mem_manager = mem_manager
         #self.setactivity_base_address = setactivity_base_address # A JSON string
         self.coords_base_address = coords_base_address # A bunch of bytes, mostly float type
         #self.jellybeans_base_address = jellybeans_base_address
         #self.jellybeans_offset = 0xC64
-        self.hp_base_address = hp_base_address
+        #self.hp_base_address = hp_base_address
         self.coords_offset = 0x40 # start with X coord, but this is used to fetch other values like inactivity
         #self.setactivity_offset = 0x8
         self.hp_offset = 0x238
@@ -218,7 +217,7 @@ class Player():
         #toon_json = {'jellybeans': self.get_jellybeans(),
                     #  'map_location': self.map_location, 
                     #  'name': self.name,
-        toon_json = {'hp': self.get_hp(),
+        toon_json = {#'hp': self.get_hp(),
                      'x': round(self.get_x(), 2), 
                      'z': round(self.get_z(), 2), 
                      'y': round(self.get_y(), 2),
