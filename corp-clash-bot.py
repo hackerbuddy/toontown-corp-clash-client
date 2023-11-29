@@ -11,7 +11,7 @@ import json
 import re
 
 def main(*argv):
-    window_name = 'Corporate Clash [1.5.3]'# Launcher'#'Toontown Rewritten'
+    window_name = 'Corporate Clash [1.5.5]'# Launcher'#'Toontown Rewritten'
     handle = wgui.FindWindow(None, window_name)
     print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
     if not handle:
@@ -39,7 +39,7 @@ def main(*argv):
     # Find setactivity_base_address by searching CheatEngine or similar tool for the String of {"cmd":
     # setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
 
-    # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for "-53.77880096"
+    # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for a Float of "-53.77880096"
     coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
     hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
     
