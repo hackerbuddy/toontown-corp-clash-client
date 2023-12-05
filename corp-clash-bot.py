@@ -182,20 +182,11 @@ class Player():
         inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + idle_bool_offset, 1) #bytearray like b'\x01'}
         return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
-    # def get_hp(self):
-    #     hp_start_val = 3495285990 #3180910064 # when toon has 0 health
-    #     hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
-    #     unsigned_hp = hp +(1 << 32) 
-    #     return (unsigned_hp - hp_start_val) / 32
-    #     #return int(hp, 16)
-
     def get_hp(self):
-        hp_start_val = 3872675312 # when toon has -1 health (dead)
+        hp_start_val = 3872675312 # when toon has -1 health (dead). This value appears to be similar across updates.
         raw_hp = self.mem_manager.read_bytes(self.hp_base_address + self.hp_offset, 4) # this reads in bytes in the wrong/reversed order...
         reversed_bytes_hp = int(bytes(bytearray(raw_hp)[::-1]).hex(),16) # sorcery! But probably endianness
-        return (reversed_bytes_hp - hp_start_val)/32
-
-        return reversed_bytes_hp#(hp_start_val - hp) / 32 # each health point == 32
+        return (reversed_bytes_hp - hp_start_val)/32 # each health point is 32. This appears to be true across updates
 
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
