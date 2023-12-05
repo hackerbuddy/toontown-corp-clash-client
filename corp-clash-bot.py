@@ -177,7 +177,7 @@ class Player():
         raw_hp = self.mem_manager.read_bytes(self.hp_base_address, 4) # this reads in bytes in the wrong/reversed order...
         reversed_bytes_hp = int(bytes(bytearray(raw_hp)[::-1]).hex(),16) # sorcery! But probably endianness
         return (reversed_bytes_hp - hp_start_val)/32 # each health point is 32. This appears to be true across updates
-
+ 
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
            Some of these values are available BEFORE toon selection!
