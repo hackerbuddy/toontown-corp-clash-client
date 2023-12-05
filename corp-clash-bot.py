@@ -11,7 +11,7 @@ import json
 import re
 
 def main(*argv):
-    window_name = 'Corporate Clash [1.5.3]'# Launcher'#'Toontown Rewritten'
+    window_name = 'Corporate Clash [1.5.5]'# Launcher'#'Toontown Rewritten'
     handle = wgui.FindWindow(None, window_name)
     print("Window `{0:s}` handle: 0x{1:016X}".format(window_name, handle))
     if not handle:
@@ -39,10 +39,10 @@ def main(*argv):
     # Find setactivity_base_address by searching CheatEngine or similar tool for the String of {"cmd":
     # setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
 
-    # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for "-53.77880096"
-    coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
-    hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
-    
+    # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for a Float of "-53.77880096"
+    coords_base_address = get_address(pm.base_address, [0x13DF79D8, 0x530, 0x1C0, 0x18, 0x1F0, 0x18, 0x18, 0x40],  pm) # NOTE: offsets for this val appear to be constant!
+    hp_base_address =     get_address(pm.base_address, [0x13A40708, 0x158, 0x190, 0x58, 0x38,  0x0,  0x38, 0xB48], pm)
+
     #jellybeans_base_address = get_address(pm.base_address, [0x13DECCC8, 0x8C8, 0xD8, 0x50, 0x8, 0x8, 0x30], pm)
 
     # To find a value, we need a static address, plus offsets
@@ -65,14 +65,8 @@ def main(*argv):
 class Player():
     def __init__(self, mem_manager, coords_base_address, hp_base_address):
         self.mem_manager = mem_manager
-        #self.setactivity_base_address = setactivity_base_address # A JSON string
-        self.coords_base_address = coords_base_address # A bunch of bytes, mostly float type
-        #self.jellybeans_base_address = jellybeans_base_address
-        #self.jellybeans_offset = 0xC64
+        self.coords_base_address = coords_base_address # several values are stored in this proximity! Might be the player class!
         self.hp_base_address = hp_base_address
-        self.coords_offset = 0x40 # start with X coord, but this is used to fetch other values like inactivity
-        #self.setactivity_offset = 0x8
-        self.hp_offset = 0x238
         self.map_location = ''
         self.hp_remaining = 0
         self.hp_max = 0
@@ -157,38 +151,33 @@ class Player():
 
     def get_x(self):
         """Get the X coordinate float"""
-        x_offset = self.coords_offset + 0 # X is the first value we read, used to determine other toon vals
-        x = self.mem_manager.read_float(self.coords_base_address + x_offset)
+        # X is the first value we read, used to determine other toon vals
+        x = self.mem_manager.read_float(self.coords_base_address)
         return x
     
     def get_z(self):
-        z_offset = self.coords_offset + 4
-        z = self.mem_manager.read_float(self.coords_base_address + z_offset)
+        z = self.mem_manager.read_float(self.coords_base_address + 4)
         return z
 
     def get_y(self):
-        y_offset = self.coords_offset + 8
-        y = self.mem_manager.read_float(self.coords_base_address + y_offset)
+        y = self.mem_manager.read_float(self.coords_base_address + 8)
         return y
       
     def get_direction_degrees(self):
-        direction_offset = self.coords_offset + 12
-        direction = self.mem_manager.read_float(self.coords_base_address + direction_offset)
+        direction = self.mem_manager.read_float(self.coords_base_address + 12)
         direction_degrees = direction % 360 # gives us a value between 0 and 360 degrees
         return direction_degrees
     
     def get_idle_bool(self):
-        idle_bool_offset = self.coords_offset + 24
-        inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + idle_bool_offset, 1) #bytearray like b'\x01'}
+        inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + 24, 1) #bytearray like b'\x01'}
         return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
     def get_hp(self):
-        # the equation to get this value will likely change every update, but generally it is a val divisible by 32
-        hp_start_val = -2018126384 # when toon has 0 health
-        hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
-        return (hp - (hp_start_val + 32))/32
-        #return int(hp, 16)
-
+        hp_start_val = 3872675312 # when toon has -1 health (dead). This value appears to be similar across updates.
+        raw_hp = self.mem_manager.read_bytes(self.hp_base_address, 4) # this reads in bytes in the wrong/reversed order...
+        reversed_bytes_hp = int(bytes(bytearray(raw_hp)[::-1]).hex(),16) # sorcery! But probably endianness
+        return (reversed_bytes_hp - hp_start_val)/32 # each health point is 32. This appears to be true across updates
+ 
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
            Some of these values are available BEFORE toon selection!
@@ -509,10 +498,17 @@ def bytestr_to_addr(my_byte_string):
 
 def get_address(start_address, offsets, pm):
     next_prt_addr = start_address
-    for offset in offsets:
-        next_prt_addr = bytestr_to_addr(pm.read_bytes(next_prt_addr + offset, 6).hex())
+    final_offset = 0x0
 
-    return next_prt_addr
+    for index, offset in enumerate(offsets):
+        if (index + 1) == len(offsets):
+            print('Don\'t want to read a pointer for our final value in the chain, simply return an address')
+            final_offset = offset
+        else:
+            # Get the next pointer in the chain
+            next_prt_addr = bytestr_to_addr(pm.read_bytes(next_prt_addr + offset, 6).hex())
+
+    return next_prt_addr + final_offset
 
 if __name__ == "__main__":
     main()
