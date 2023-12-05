@@ -41,7 +41,9 @@ def main(*argv):
 
     # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for a Float of "-53.77880096"
     coords_base_address = get_address(pm.base_address, [0x13DF79D8, 0x530, 0x1C0, 0x18, 0x1F0, 0x18, 0x18, 0x40],  pm) # NOTE: offsets for this val appear to be constant!
-    hp_base_address =     get_address(pm.base_address, [0x13A40708, 0x158, 0x190, 0x58, 0x38,  0x0,  0x38, 0xB48], pm)
+    
+    # Find hp_base_address by seaching for Ints > 38726753, then look for them to increase/decrease by 32 per hitpoint
+    hp_base_address =     get_address(pm.base_address, [0x13DF4ED8, 0x658, 0x1C0, 0x18, 0x218,  0x28,  0x20, 0x238], pm)
 
     #jellybeans_base_address = get_address(pm.base_address, [0x13DECCC8, 0x8C8, 0xD8, 0x50, 0x8, 0x8, 0x30], pm)
 
