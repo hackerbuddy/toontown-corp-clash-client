@@ -40,8 +40,8 @@ def main(*argv):
     # setactivity_base_address = get_address(pm.base_address, [0x13A71F18, 0x20, 0x1D8, 0x38, 0x50], pm)
 
     # Find coords_base_address by selecting a Toon on the top-left portrait, teleporting "Home", then looking for a Float of "-53.77880096"
-    coords_base_address = get_address(pm.base_address, [0x13DEF9D8, 0x550, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm)
-    hp_base_address = get_address(pm.base_address, [0x13DEC9D8, 0x68, 0x0, 0x80, 0x150, 0x28, 0x20], pm)
+    coords_base_address = get_address(pm.base_address, [0x13DF79D8, 0x530, 0x1C0, 0x18, 0x1F0, 0x18, 0x18], pm) # NOTE: offsets for this val appear to be constant!
+    hp_base_address = get_address(pm.base_address, [0x13A40708, 0x158, 0x190, 0x58, 0x38, 0x0, 0x38], pm)
     
     #jellybeans_base_address = get_address(pm.base_address, [0x13DECCC8, 0x8C8, 0xD8, 0x50, 0x8, 0x8, 0x30], pm)
 
@@ -72,7 +72,7 @@ class Player():
         self.hp_base_address = hp_base_address
         self.coords_offset = 0x40 # start with X coord, but this is used to fetch other values like inactivity
         #self.setactivity_offset = 0x8
-        self.hp_offset = 0x238
+        self.hp_offset = 0xB48
         self.map_location = ''
         self.hp_remaining = 0
         self.hp_max = 0
@@ -182,12 +182,20 @@ class Player():
         inactive_bool = self.mem_manager.read_bytes(self.coords_base_address + idle_bool_offset, 1) #bytearray like b'\x01'}
         return inactive_bool[0] == 1 # reading the first value of a bytearray of length of 1
 
+    # def get_hp(self):
+    #     hp_start_val = 3495285990 #3180910064 # when toon has 0 health
+    #     hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
+    #     unsigned_hp = hp +(1 << 32) 
+    #     return (unsigned_hp - hp_start_val) / 32
+    #     #return int(hp, 16)
+
     def get_hp(self):
-        hp_start_val = 3180910064 # when toon has 0 health
-        hp = self.mem_manager.read_int(self.hp_base_address + self.hp_offset)
-        unsigned_hp = hp +(1 << 32) 
-        return (unsigned_hp - hp_start_val) / 32
-        #return int(hp, 16)
+        hp_start_val = 3872675312 # when toon has -1 health (dead)
+        raw_hp = self.mem_manager.read_bytes(self.hp_base_address + self.hp_offset, 4) # this reads in bytes in the wrong/reversed order...
+        reversed_bytes_hp = int(bytes(bytearray(raw_hp)[::-1]).hex(),16) # sorcery! But probably endianness
+        return (reversed_bytes_hp - hp_start_val)/32
+
+        return reversed_bytes_hp#(hp_start_val - hp) / 32 # each health point == 32
 
     def load_hp_and_name_and_map_location(self):
         '''Read the SET_ACTIVITY JSON string to get 4 values
